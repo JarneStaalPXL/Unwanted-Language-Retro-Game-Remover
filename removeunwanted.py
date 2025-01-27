@@ -2,6 +2,7 @@ import os
 import requests
 import curses
 import time
+import statistics
 
 CHECKED_GAMES_FILE = "checked_games.txt"
 
@@ -16,18 +17,6 @@ def save_checked_game(filename):
         file.write(f"{filename}\n")
 
 def is_game_language(filename, keep_languages, retries=5, delay=10):
-    """
-    Determines if the game's language is in the specified list, with retry logic for server errors.
-
-    Args:
-        filename (str): The name of the game file.
-        keep_languages (list): List of languages to keep.
-        retries (int): Number of retry attempts in case of failure.
-        delay (int): Delay between retries in seconds.
-
-    Returns:
-        bool: True if the game language is in the keep_languages list, otherwise False.
-    """
     payload = {
         "model": "searchgpt",
         "messages": [
@@ -101,6 +90,17 @@ def select_languages():
     options = ["English", "Japanese", "Chinese"]
     return curses.wrapper(curses_menu, options)
 
+def format_time(seconds):
+    """Formats time in seconds to a readable string."""
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours > 0:
+        return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+    elif minutes > 0:
+        return f"{int(minutes)}m {int(seconds)}s"
+    else:
+        return f"{int(seconds)}s"
+
 def main():
     keep_languages = select_languages()
     if not keep_languages:
@@ -117,10 +117,18 @@ def main():
                 full_path = os.path.join(root, file_name)
                 zip_files.append(full_path)
 
-    for zip_path in zip_files:
+    total_games = len(zip_files)
+    print(f"Total games found: {total_games}")
+    remaining_games = total_games - len(checked_games)
+
+    time_per_game = []
+    for idx, zip_path in enumerate(zip_files):
         if zip_path in checked_games:
             print(f"[SKIPPING] Already checked -> {zip_path}")
             continue
+
+        start_time = time.time()
+        print(f"[INFO] Processing game {idx + 1}/{total_games}. Remaining: {remaining_games}")
 
         if is_game_language(zip_path, keep_languages):
             print(f"[KEEPING] Game in selected language -> {zip_path}")
@@ -128,7 +136,16 @@ def main():
             print(f"[REMOVING] Game not in selected language -> {zip_path}")
             os.remove(zip_path)
 
+        elapsed_time = time.time() - start_time
+        time_per_game.append(elapsed_time)
+
+        if time_per_game:
+            average_time = statistics.mean(time_per_game)
+            estimated_time_left = average_time * (remaining_games - 1)
+            print(f"[INFO] Estimated time left: {format_time(estimated_time_left)}")
+
         save_checked_game(zip_path)
+        remaining_games -= 1
 
 if __name__ == "__main__":
     main()
